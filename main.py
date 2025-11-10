@@ -10,11 +10,18 @@ import os
 
 class HistoricalDataProcessor:
 
-    def __init__(self, ElectricSectorOpenData, ONSHourlyGeneration):
+    # def __init__(self, ElectricSectorOpenData, ONSHourlyGeneration):
 
-        self.ccee_client = ElectricSectorOpenData("ccee")
-        self.ons_client = ElectricSectorOpenData("ons")
-        self.ons_generation_client = ONSHourlyGeneration()
+    #     self.ccee_client = ElectricSectorOpenData("ccee")
+    #     self.ons_client = ElectricSectorOpenData("ons")
+    #     self.ons_generation_client = ONSHourlyGeneration()
+
+
+    def __init__(self, electric_sector_client_ccee, electric_sector_client_ons, ons_hourly_generation_client):
+
+        self.ccee_client = electric_sector_client_ccee
+        self.ons_client = electric_sector_client_ons
+        self.ons_generation_client = ons_hourly_generation_client
 
     def historical_hourly_pld_processing(self):
 
@@ -25,13 +32,13 @@ class HistoricalDataProcessor:
         hourly_pld['MES_REFERENCIA'] = pd.to_datetime(hourly_pld['MES_REFERENCIA'], format='%Y%m')
 
         dates = {
-        'year': hourly_pld['MES_REFERENCIA'].dt.year,
-        'month': hourly_pld['MES_REFERENCIA'].dt.month,
-        'day': hourly_pld['DIA'],
-        'hour': hourly_pld['HORA']
+            'year': hourly_pld['MES_REFERENCIA'].dt.year,
+            'month': hourly_pld['MES_REFERENCIA'].dt.month,
+            'day': hourly_pld['DIA'],
+            'hour': hourly_pld['HORA']
         }
 
-        hourly_pld['date'] = pd.to_datetime(dates)
+        hourly_pld['date'] = pd.to_datetime(dates) # type: ignore
 
         hourly_pld.set_index('date', inplace=True)
 
@@ -51,6 +58,10 @@ class HistoricalDataProcessor:
         hourly_pld['submarket'] = hourly_pld['submarket'].map(submarket_map)
 
         hourly_pld = hourly_pld.loc[hourly_pld.index < '2025-07-01']
+
+        if hourly_pld is None or hourly_pld.empty:
+
+            print("Hourly PLD DataFrame is empty after processing. Returning an empty DataFrame.")
 
         return hourly_pld
     
@@ -75,6 +86,10 @@ class HistoricalDataProcessor:
 
         hourly_generation_raw = asyncio.run(main())
 
+        if hourly_generation_raw is None or hourly_generation_raw.empty:
+
+            print("Hourly Generation DataFrame is empty after processing. Returning an empty DataFrame.")
+
         return hourly_generation_raw
     
 
@@ -82,12 +97,12 @@ class HistoricalDataProcessor:
 
         """ Start date included and end date excluded """
 
-        start_date = pd.to_datetime(start_date)
-        end_date = pd.to_datetime(end_date)
+        start_date = pd.to_datetime(start_date) # type: ignore
+        end_date = pd.to_datetime(end_date) # type: ignore
 
         hourly_generation_raw = self.download_hourly_generation(start_date,end_date)
         
-        hourly_generation = hourly_generation_raw.copy()
+        hourly_generation = hourly_generation_raw.copy() # type: ignore
 
         # power_plant_type = [
         #     'TIPO I', 
@@ -117,7 +132,11 @@ class HistoricalDataProcessor:
 
         hourly_generation.set_index('date', inplace=True)
 
-        hourly_generation = hourly_generation.loc[(hourly_generation.index >= start_date) & (hourly_generation.index < end_date)]
+        hourly_generation = hourly_generation.loc[(hourly_generation.index >= start_date) & (hourly_generation.index <= end_date)]
+
+        if hourly_generation is None or hourly_generation.empty:
+
+            print("Hourly Generation DataFrame is empty after processing. Returning an empty DataFrame.")
 
         return hourly_generation
 
@@ -171,13 +190,26 @@ class HistoricalDataProcessor:
 
         hourly_data = price_gen.join(generation_RE, how='outer').fillna(0)
 
+        if hourly_data is None or hourly_data.empty:
+
+            print("Hourly Data DataFrame is empty after processing. Returning an empty DataFrame.")
+
         return hourly_data
     
+    
+    
+class CaptureIndicators:
+
+    # def __init__(self, historical_data_processor_client, future_data_processor_client):
+    def __init__(self, historical_data_processor_client):
+        self.historical_data_processor = historical_data_processor_client
+        # self.future_data_processor = future_data_processor_client
+
+
     def capture_prices_calculate(self,hourly_data_raw: pd.DataFrame, start_date: str = '2010-01-01', end_date: str = '2025-07-01'):
 
-        # hourly_data = hourly_data.loc[(hourly_data.index >= start_date) & (hourly_data.index < end_date)] # Ajustar
         hourly_data = hourly_data_raw.query(
-                                        "@start_date <= date < @end_date"
+                                        "@start_date <= date <= @end_date"
                                         )
         
         hourly_data["cap_pric_wind"] = hourly_data['wind_generation_MWh'] * hourly_data['Hourly_PLD']
@@ -186,8 +218,6 @@ class HistoricalDataProcessor:
 
         hourly_data["cap_pric_sol"] = hourly_data['solar_generation_MWh'] * hourly_data['Hourly_PLD']
         solar_cap_prices = hourly_data['cap_pric_sol'].groupby(['submarket']).sum()/hourly_data['solar_generation_MWh'].groupby(['submarket']).sum()
-
-
 
         return wind_cap_prices, solar_cap_prices, hourly_data
     
@@ -206,22 +236,30 @@ class HistoricalDataProcessor:
 
 if __name__ == "__main__":
 
-    processor = HistoricalDataProcessor(ElectricSectorOpenData, ONSHourlyGeneration)
+    electric_sector_client_ccee = ElectricSectorOpenData("ccee")
+    electric_sector_client_ons = ElectricSectorOpenData("ons")
+    ons_generation_client = ONSHourlyGeneration()
 
-    historical_hourly_price = processor.historical_hourly_pld_processing()
+    start_date='2024-01-01'
+    end_date='2024-12-31'
 
-    historical_hourly_generation = processor.historical_hourly_generation_processing(start_date='2025-01-01', end_date='2025-07-01')
+    historical_data_processor = HistoricalDataProcessor(electric_sector_client_ccee, electric_sector_client_ons, ons_generation_client)
 
-    hourly_data = processor.hourly_data_treatment(historical_hourly_generation, historical_hourly_price)
+    historical_hourly_price = historical_data_processor.historical_hourly_pld_processing()
 
-    wind_cap_rate, solar_cap_rate, wind_cap_prices, solar_cap_prices = processor.capture_rate_calculate(hourly_data, start_date='2025-01-01', end_date='2025-06-01')
+    print(historical_hourly_price)
+
+    historical_hourly_generation = historical_data_processor.historical_hourly_generation_processing(start_date=start_date, end_date=end_date)
+
+    print(historical_hourly_generation)
+
+    hourly_data = historical_data_processor.hourly_data_treatment(historical_hourly_generation, historical_hourly_price)
+
+    capture_indicators = CaptureIndicators(historical_data_processor)
+
+    wind_cap_rate, solar_cap_rate, wind_cap_prices, solar_cap_prices = capture_indicators.capture_rate_calculate(hourly_data, start_date=start_date, end_date= end_date)
 
     print(wind_cap_rate, solar_cap_rate, wind_cap_prices, solar_cap_prices)
 
 
-
-
-    print("Fim Main")
-
-
-print("Fim")
+    print("End of Main Processing.")
