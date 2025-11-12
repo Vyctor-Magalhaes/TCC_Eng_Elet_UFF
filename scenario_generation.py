@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 from typing import List
 import general_input
 from NEWAVE_Outputs_Data import NewaveDataProcessor
@@ -112,196 +113,93 @@ class ScenarioGenerator:
               plt.tight_layout()
               plt.show()
 
+       def hourly_price_scenario_optimized(self, start_date) -> None: # Retorna None, pois salva em disco
+              """
+              Converts PU scenarios to hourly price scenarios using chunked processing
+              by price scenario (scenario_nw) and saves each to Parquet to avoid MemoryErrors.
+              """
 
-#AJUSTAR, ALGO ERRADO
-       # def hourly_price_scenario(self, start_date) -> pd.DataFrame:
-       #        """
-       #        Converts the PU scenarios to hourly price scenarios based on a given monthly PLD scenarios from the Newave model.
-       #        """
+              scenarios = self.generate_scenarios() 
+              processor = NewaveDataProcessor(
+                     newave_csv_path=general_input.newave_csv, 
+                     re_excel_path=general_input.re_excel, 
+                     start_date=start_date
+              )
+              processor.process_all_data()
 
-       #        scenarios = self.generate_scenarios()
+              price_lookup = processor.pld_data.loc[
+                     processor.pld_data['submarket'] == 'SE/CO'
+              ].copy()
 
-       #        processor = NewaveDataProcessor(newave_csv_path=general_input.newave_csv, re_excel_path=general_input.re_excel, start_date=start_date)
-       #        processor.process_all_data()
+              price_lookup['year'] = price_lookup.index.year.astype(int)    # type: ignore
+              price_lookup['month'] = price_lookup.index.month.astype(int)  # type: ignore
 
-       #        newave_pld = processor.pld_data.copy()
-
-
-       #        first_date = newave_pld.index.min()
-       #        last_date = pd.to_datetime(f'{newave_pld.index.max().year}-{newave_pld.index.max().month}-31 23:00:00')
-       #        full_date = pd.date_range(start=first_date, end=last_date, freq='h')
-
-       #        newave_pld_modified = newave_pld.copy()
-       #        newave_pld_modified['year'] = newave_pld_modified.index.year.astype(int)
-       #        newave_pld_modified['month'] = newave_pld_modified.index.month.astype(int)
-       #        newave_pld_modified['day'] = newave_pld_modified.index.day.astype(int)
-
-       #        # Using only SE/CO submarket for hourly price scenarios (load center from Brazil)
-       #        newave_pld_modified = newave_pld_modified.loc[newave_pld_modified['submarket']=='SE/CO'].copy()
-       #        newave_pld_modified.drop(columns=['submarket'], inplace=True)
-       #        newave_pld_modified['scenario_nw'] = newave_pld_modified['scenario_nw'].astype(int)
-       #        newave_pld_modified['pld_nw'] = newave_pld_modified['pld_nw'].astype(float)
-
-       #        hourly_df = pd.DataFrame(index=full_date)
-       #        hourly_df['year'] = hourly_df.index.year.astype(int)
-       #        hourly_df['month'] = hourly_df.index.month.astype(int)
-       #        hourly_df['day'] = hourly_df.index.day.astype(int)
-       #        hourly_df['hour'] = hourly_df.index.hour.astype(int)
-
-       #        scenarios['hour'] = scenarios.index
-       #        scenarios['hour'] = scenarios['hour'].astype(int)
-
-       #        hourly_df = hourly_df.merge(scenarios, on='hour', how='left')
-
-       #        print("melting hourly df...")
-
-       #        hourly_df_final = hourly_df.melt(
-       #            id_vars=['year', 'month', 'day', 'hour'], 
-       #            var_name='simulated_scenario',            
-       #            value_name='hourly_profile'               
-       #        )
-
-       #        hourly_df_final['simulated_scenario'] = hourly_df_final['simulated_scenario'].astype(int)
-       #        hourly_df_final['hourly_profile'] = hourly_df_final['hourly_profile'].astype(float)
-
-       #        print("merging final df...")
-
-       #        hourly_df_final_filter = hourly_df_final[
-       #            ['year', 'month', 'hour', 'simulated_scenario','hourly_profile']
-       #        ].drop_duplicates()
-
-       #        final_df = newave_pld_modified.merge(
-       #            hourly_df_final_filter,
-       #            on=['year', 'month'],
-       #            how='left'
-       #        )
-       #        print("building final df...")
-       #        filter_df = ['year', 'month', 'day', 'hour']
-
-       #        final_df['date'] = pd.to_datetime(
-       #            final_df[filter_df]
-       #        )
-
-       #        final_df = final_df.set_index('date').drop(
-       #            columns=[*filter_df]
-       #        )
-       #        print("calculating hourly price...")
-
-       #        final_df['hourly_price'] = final_df['pld_nw'] * final_df['hourly_profile']
-
-       #        final_df['hourly_price'] = final_df['hourly_price'].clip(
-       #            lower=general_input.MONTHLY_PLD_LIMITS['min'][0],
-       #            upper=general_input.MONTHLY_PLD_LIMITS['max'][0]
-       #        )
-
-       #        return final_df
-       
-
-       # def hourly_price_scenario_optimized(self, start_date) -> pd.DataFrame:
-       #        """
-       #        Converts PU scenarios to hourly price scenarios using chunked processing
-       #        to avoid MemoryErrors.
-       #        """
+              price_lookup['scenario_nw'] = price_lookup['scenario_nw'].astype(int)
+              price_lookup['pld_nw'] = price_lookup['pld_nw'].astype('float32')
               
-       #        # --- 1. Carregar e Preparar Dados (Operações Leves) ---
-       #        print("Loading base data...")
-       #        scenarios = self.generate_scenarios() # 24x21 DF
-       #        processor = NewaveDataProcessor(
-       #               newave_csv_path=general_input.newave_csv, 
-       #               re_excel_path=general_input.re_excel, 
-       #               start_date=start_date
-       #        )
-       #        processor.process_all_data()
+              price_lookup = price_lookup[
+                     ['year', 'month', 'scenario_nw', 'pld_nw']
+              ].drop_duplicates()
 
-       #        # --- 2. Preparar Tabela de Preços (96k rows, otimizada) ---
-       #        # Filtra o submercado ANTES de qualquer operação pesada
-       #        price_lookup = processor.pld_data.loc[
-       #               processor.pld_data['submarket'] == 'SE/CO'
-       #        ].copy()
+              first_date = processor.pld_data.index.min()
+              last_date = pd.to_datetime(f'{processor.pld_data.index.max().year}-{processor.pld_data.index.max().month}-01') + pd.DateOffset(months=1) - pd.DateOffset(hours=1)
+              full_date = pd.date_range(start=first_date, end=last_date, freq='h')
 
-       #        price_lookup['year'] = price_lookup.index.year.astype('int16')
-       #        price_lookup['month'] = price_lookup.index.month.astype('int8')
-       #        price_lookup['day'] = price_lookup.index.day.astype('int8') # Para o índice final
-       #        price_lookup['scenario_nw'] = price_lookup['scenario_nw'].astype('int16')
-       #        price_lookup['pld_nw'] = price_lookup['pld_nw'].astype('float32')
+              hourly_df = pd.DataFrame(index=full_date)
+              hourly_df['year'] = hourly_df.index.year.astype('int16')  # type: ignore
+              hourly_df['month'] = hourly_df.index.month.astype('int8') # type: ignore
+              hourly_df['day'] = hourly_df.index.day.astype('int8')     # type: ignore
+              hourly_df['hour'] = hourly_df.index.hour.astype('int8')   # type: ignore
               
-       #        # Seleciona apenas as colunas necessárias para o merge
-       #        price_lookup = price_lookup[
-       #               ['year', 'month', 'day', 'scenario_nw', 'pld_nw']
-       #        ]
+              scenarios['hour'] = scenarios.index.astype('int8')
+              
+              hourly_df = hourly_df.merge(scenarios, on='hour', how='left')
 
-       #        # --- 3. Preparar Tabela de Perfis (504 rows, otimizada) ---
-       #        # Não precisamos dos 24k de linhas (que incluía ano/mês).
-       #        # Precisamos apenas do "molde" de 504 linhas (21 cenários * 24 horas).
-              
-       #        scenarios['hour'] = scenarios.index.astype('int8')
-       #        profile_lookup = scenarios.melt(
-       #               id_vars=['hour'], 
-       #               var_name='simulated_scenario', 
-       #               value_name='hourly_profile'
-       #        ) # 504 linhas
-              
-       #        profile_lookup['simulated_scenario'] = profile_lookup['simulated_scenario'].astype('int8')
-       #        profile_lookup['hourly_profile'] = profile_lookup['hourly_profile'].astype('float32')
+              profile_base_long = hourly_df.melt(
+                     id_vars=['year', 'month', 'day', 'hour'], 
+                     var_name='simulated_scenario', 
+                     value_name='hourly_profile'
+              )
+              profile_base_long['simulated_scenario'] = profile_base_long['simulated_scenario'].astype('int8')
+              profile_base_long['hourly_profile'] = profile_base_long['hourly_profile'].astype('float32')
 
               
-       #        # --- 4. Processamento em Lotes (Chunking) ---
-       #        print("Starting chunked processing by month...")
+              price_scenarios_list = price_lookup['scenario_nw'].unique()
               
-       #        # Pega os meses únicos (48) para iterar
-       #        months_to_process = price_lookup[['year', 'month', 'day']].drop_duplicates()
+              output_directory = "cenarios_horarios_finais"
+              Path(output_directory).mkdir(exist_ok=True)
               
-       #        list_of_chunks = [] # Armazena os resultados de cada mês
-              
-       #        for _, row in months_to_process.iterrows():
-       #               y = row['year']
-       #               m = row['month']
-       #               d = row['day'] # Geralmente 1, vindo do price_lookup
+              print(f"Starting chunked processing for {len(price_scenarios_list)} price scenarios...")
+
+              for price_id in price_scenarios_list:
                      
-       #               # a. Pega os 2000 preços deste mês
-       #               prices_chunk = price_lookup[
-       #               (price_lookup['year'] == y) & (price_lookup['month'] == m)
-       #               ]
-                     
-       #               # b. Pega os 504 perfis (a tabela de perfis é constante, usamos .copy())
-       #               profiles_chunk = profile_lookup.copy()
-                     
-       #               # c. Faz o Cross-Join (Produto Cartesiano) - *APENAS* para este mês
-       #               #    (Cria ~1M de linhas em memória temporariamente)
-       #               chunk_df = prices_chunk.merge(profiles_chunk, how='cross')
+                     current_price_scenario = price_lookup[price_lookup['scenario_nw'] == price_id]
 
-       #               # d. Calcula o preço horário
-       #               chunk_df['hourly_price'] = chunk_df['pld_nw'] * chunk_df['hourly_profile']
-                     
-       #               # e. Aplica o CLIP
-       #               chunk_df['hourly_price'] = chunk_df['hourly_price'].clip(
-       #               lower=general_input.MONTHLY_PLD_LIMITS['min'][0],
-       #               upper=general_input.MONTHLY_PLD_LIMITS['max'][0]
-       #               )
-                     
-       #               # f. Cria o DatetimeIndex (muito mais rápido em 1M de linhas)
-       #               chunk_df['date'] = pd.to_datetime(
-       #               chunk_df[['year', 'month', 'day', 'hour']]
-       #               )
-                     
-       #               # g. Limpa o chunk antes de salvar
-       #               chunk_df = chunk_df.set_index('date')[[
-       #               'scenario_nw', 'simulated_scenario', 'hourly_price'
-       #               ]]
-                     
-       #               list_of_chunks.append(chunk_df)
-       #               print(f"Processed chunk: {y}-{m}")
+                     temp_df = profile_base_long.merge(
+                     current_price_scenario,
+                     on=['year', 'month'],
+                     how='left' )
 
-       #        # --- 5. Montagem Final ---
-       #        print("Concatenating all chunks...")
-       #        final_df = pd.concat(list_of_chunks)
+                     temp_df['hourly_price'] = temp_df['pld_nw'] * temp_df['hourly_profile']
+
+                     temp_df['hourly_price'] = temp_df['hourly_price'].clip(
+                     lower=general_input.MONTHLY_PLD_LIMITS['min'][0],
+                     upper=general_input.MONTHLY_PLD_LIMITS['max'][0]
+                     )
+
+                     final_chunk = temp_df[[
+                     'year', 'month', 'day', 'hour', 
+                     'scenario_nw', 'simulated_scenario', 
+                     'hourly_price'
+                     ]].copy()
+
+                     output_filename = f"{output_directory}/price_scenario_{price_id}.parquet"
+                     final_chunk.to_parquet(output_filename, index=False)
+
+                     if int(price_id) % 100 == 0: 
+                            print(f"Processed and saved: price scenario {price_id}/{len(price_scenarios_list)}")
               
-       #        print("Process complete.")
-       #        return final_df
-
-
-
-
+              return None
 
 if __name__ == "__main__":
 
@@ -322,7 +220,7 @@ if __name__ == "__main__":
        # hourly_price_scenarios = generator.hourly_price_scenario(start_date=start_date)
        # print(hourly_price_scenarios.head())
        hourly_price_scenario_optimized = generator.hourly_price_scenario_optimized(start_date=start_date)
-       print(hourly_price_scenario_optimized.head())
+       # print(hourly_price_scenario_optimized.head())
 
        print("End of Scenario Generation Module.")
 

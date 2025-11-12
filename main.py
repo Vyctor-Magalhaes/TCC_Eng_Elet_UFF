@@ -10,13 +10,6 @@ import os
 
 class HistoricalDataProcessor:
 
-    # def __init__(self, ElectricSectorOpenData, ONSHourlyGeneration):
-
-    #     self.ccee_client = ElectricSectorOpenData("ccee")
-    #     self.ons_client = ElectricSectorOpenData("ons")
-    #     self.ons_generation_client = ONSHourlyGeneration()
-
-
     def __init__(self, electric_sector_client_ccee, electric_sector_client_ons, ons_hourly_generation_client):
 
         self.ccee_client = electric_sector_client_ccee
@@ -95,7 +88,7 @@ class HistoricalDataProcessor:
 
     def historical_hourly_generation_processing(self, clean_version: bool = True, start_date: str = '2010-01-01', end_date: str = '2025-07-01'):
 
-        """ Start date included and end date excluded """
+        """ Start and end date included"""
 
         start_date = pd.to_datetime(start_date) # type: ignore
         end_date = pd.to_datetime(end_date) # type: ignore
@@ -141,60 +134,84 @@ class HistoricalDataProcessor:
         return hourly_generation
 
 
-    def hourly_data_treatment(self,hourly_generation: pd.DataFrame , hourly_prices: pd.DataFrame):
+    def hourly_data_treatment(self,hourly_generation: pd.DataFrame = pd.DataFrame(), hourly_prices: pd.DataFrame = pd.DataFrame()):
 
-        generation = hourly_generation.copy()   
-        
-        # power_plant_type = [
-        # 'TIPO I', 
-        # 'TIPO II-A', 
-        # 'TIPO II-B', 
-        # 'TIPO II-C'
-        # ]
+        total_generation = pd.DataFrame()
+        generation_RE = pd.DataFrame()
 
-        # generation = generation.query( "cod_modalidadeoperacao in @power_plant_type")
+        try:
+            generation = hourly_generation.copy()   
 
-        generation.drop(columns='cod_modalidadeoperacao', inplace=True)
+            # power_plant_type = [
+            # 'TIPO I', 
+            # 'TIPO II-A', 
+            # 'TIPO II-B', 
+            # 'TIPO II-C'
+            # ]
 
-        generation['generation_MWh'] = pd.to_numeric(generation['generation_MWh'], errors='coerce')
+            # generation = generation.query( "cod_modalidadeoperacao in @power_plant_type")
 
-        grouped_by_tech = generation.groupby(
-                                        [generation.index, 'submarket', 'gen_technology']
-                                    ).sum()
+            generation.drop(columns='cod_modalidadeoperacao', inplace=True)
+
+            generation['generation_MWh'] = pd.to_numeric(generation['generation_MWh'], errors='coerce')
+
+            grouped_by_tech = generation.groupby(
+                            [generation.index, 'submarket', 'gen_technology']
+                        ).sum()
 
 
-        total_generation = grouped_by_tech.groupby(level=['date', 'submarket']).sum()
-        # total_generation.reset_index('submarket', inplace=True)
-        total_generation.rename(columns={"generation_MWh": "total_generation_MWh"}, inplace=True)
+            total_generation = grouped_by_tech.groupby(level=['date', 'submarket']).sum()
+            # total_generation.reset_index('submarket', inplace=True)
+            total_generation.rename(columns={"generation_MWh": "total_generation_MWh"}, inplace=True)
 
-        wind_generation = grouped_by_tech.query("gen_technology == 'EOLIELÉTRICA'")
-        wind_generation = wind_generation.droplevel('gen_technology')
-        # wind_generation.reset_index('submarket', inplace=True)
-        wind_generation.rename(columns={"generation_MWh": "wind_generation_MWh"}, inplace=True)
+            wind_generation = grouped_by_tech.query("gen_technology == 'EOLIELÉTRICA'")
+            wind_generation = wind_generation.droplevel('gen_technology')
+            # wind_generation.reset_index('submarket', inplace=True)
+            wind_generation.rename(columns={"generation_MWh": "wind_generation_MWh"}, inplace=True)
 
-        solar_generation = grouped_by_tech.query("gen_technology == 'FOTOVOLTAICA'")
-        solar_generation = solar_generation.droplevel('gen_technology')
-        # solar_generation.reset_index('submarket', inplace=True)
-        solar_generation.rename(columns={"generation_MWh": "solar_generation_MWh"}, inplace=True)
+            solar_generation = grouped_by_tech.query("gen_technology == 'FOTOVOLTAICA'")
+            solar_generation = solar_generation.droplevel('gen_technology')
+            # solar_generation.reset_index('submarket', inplace=True)
+            solar_generation.rename(columns={"generation_MWh": "solar_generation_MWh"}, inplace=True)
 
-        generation_RE = wind_generation.join(solar_generation, how='outer')
+            generation_RE = wind_generation.join(solar_generation, how='outer')
 
-        prices = hourly_prices.copy()
+        except:
+            if hourly_generation is None or hourly_generation.empty:
+                print("Hourly Generation DataFrame is empty. Trying to continue the process using only prices.")
+            
+            else:
+                print("Error in processing hourly generation data. Returning an empty DataFrame.")
+                return pd.DataFrame()           
 
-        prices = prices.loc[(prices.index >= total_generation.index.min()[0]) & (prices.index <= total_generation.index.max()[0])]
 
-        prices = prices.groupby([prices.index, 'submarket']
-                                    ).sum()
+        try:
 
-        price_gen = prices.join(total_generation, how='outer')
+            prices = hourly_prices.copy()
 
-        hourly_data = price_gen.join(generation_RE, how='outer').fillna(0)
+            prices = prices.loc[(prices.index >= total_generation.index.min()[0]) & (prices.index <= total_generation.index.max()[0])]
+
+            prices = prices.groupby([prices.index, 'submarket']
+                                        ).sum()
+
+            price_gen = prices.join(total_generation, how='outer')
+
+            hourly_data = price_gen.join(generation_RE, how='outer').fillna(0)
+
+        except:
+            if hourly_prices is None or hourly_prices.empty:
+                print("Hourly Prices DataFrame is empty. Returning only generation data.")
+                return total_generation, generation_RE, pd.DataFrame()
+
+            else:
+                print("Error in processing hourly prices data. Returning an empty DataFrame.")
+                return pd.DataFrame()
 
         if hourly_data is None or hourly_data.empty:
 
             print("Hourly Data DataFrame is empty after processing. Returning an empty DataFrame.")
 
-        return hourly_data
+        return total_generation, generation_RE, hourly_data
     
     
     
