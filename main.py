@@ -2,6 +2,9 @@ from datetime import datetime
 import pandas as pd
 from OpenDataSEB import ElectricSectorOpenData
 from ONS_Hourly_Generation import ONSHourlyGeneration
+from NEWAVE_Outputs_Data import NewaveDataProcessor
+from shape_analisys import EnergyAnalysisService
+import general_input
 import matplotlib.pyplot as plt
 import asyncio
 import os
@@ -215,6 +218,8 @@ class HistoricalDataProcessor:
     
     
     
+
+
 class CaptureIndicators:
 
     # def __init__(self, historical_data_processor_client, future_data_processor_client):
@@ -249,34 +254,46 @@ class CaptureIndicators:
         wind_cap_rate = wind_cap_prices/base_prices
 
         return wind_cap_rate, solar_cap_rate, wind_cap_prices, solar_cap_prices
+    
+
+    def future_capture_prices_calculate(self, future_hourly_re_gen: pd.DataFrame, future_prices: pd.DataFrame):
+        pass
+
+    def future_capture_rate_calculate(self, future_hourly_re_gen: pd.DataFrame, future_prices: pd.DataFrame):
+        pass
 
 
 if __name__ == "__main__":
 
-    electric_sector_client_ccee = ElectricSectorOpenData("ccee")
-    electric_sector_client_ons = ElectricSectorOpenData("ons")
-    ons_generation_client = ONSHourlyGeneration()
-
     start_date='2024-01-01'
     end_date='2024-12-31'
 
+    electric_sector_client_ccee = ElectricSectorOpenData("ccee")
+    electric_sector_client_ons = ElectricSectorOpenData("ons")
+    ons_generation_client = ONSHourlyGeneration()
+    processor = NewaveDataProcessor(newave_csv_path=general_input.newave_csv, re_excel_path=general_input.re_excel)
     historical_data_processor = HistoricalDataProcessor(electric_sector_client_ccee, electric_sector_client_ons, ons_generation_client)
+    analysis_service = EnergyAnalysisService(historical_data_processor=historical_data_processor, newave_processor=processor ) 
+    capture_indicators = CaptureIndicators(historical_data_processor)
 
     historical_hourly_price = historical_data_processor.historical_hourly_pld_processing()
 
-    print(historical_hourly_price)
-
     historical_hourly_generation = historical_data_processor.historical_hourly_generation_processing(start_date=start_date, end_date=end_date)
 
-    print(historical_hourly_generation)
+    total_generation, generation_RE, hourly_data = historical_data_processor.hourly_data_treatment(historical_hourly_generation, historical_hourly_price)
 
-    hourly_data = historical_data_processor.hourly_data_treatment(historical_hourly_generation, historical_hourly_price)
+    # print(historical_hourly_price) 
+    # print(historical_hourly_generation)
 
-    capture_indicators = CaptureIndicators(historical_data_processor)
+    wind_cap_rate, solar_cap_rate, wind_cap_prices, solar_cap_prices = capture_indicators.capture_rate_calculate(hourly_data, start_date=start_date, end_date= end_date) # type: ignore
 
-    wind_cap_rate, solar_cap_rate, wind_cap_prices, solar_cap_prices = capture_indicators.capture_rate_calculate(hourly_data, start_date=start_date, end_date= end_date)
+    # print(wind_cap_rate, solar_cap_rate, wind_cap_prices, solar_cap_prices)
 
-    print(wind_cap_rate, solar_cap_rate, wind_cap_prices, solar_cap_prices)
+    future_hourly_re_gen = analysis_service.calculate_final_monthly_generation(solar_shape = pd.DataFrame(), wind_shape = pd.DataFrame(), start_date=start_date, end_date=end_date)
+
+    future_prices = analysis_service.consolidate_future_price_scenarios()
+    
+    capture_indicators.future_capture_prices_calculate(future_hourly_re_gen, future_prices) # To Finalize
 
 
     print("End of Main Processing.")

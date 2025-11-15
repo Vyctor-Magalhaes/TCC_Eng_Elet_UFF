@@ -86,6 +86,7 @@ class NewaveDataProcessor:
         """Loads and processes RE (non-simulated) generation data from Excel."""
         
         re_raw = pd.read_excel(self.re_excel_path, sheet_name="generation_MWh_vf")
+        # re_raw = pd.read_excel(self.re_excel_path, sheet_name="generation_MWa_vf") # Choose MWh or MWa
 
         re_data = re_raw.iloc[1:, :].copy()
         re_data.rename(columns={

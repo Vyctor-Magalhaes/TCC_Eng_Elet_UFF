@@ -113,7 +113,7 @@ class ScenarioGenerator:
               plt.tight_layout()
               plt.show()
 
-       def hourly_price_scenario_optimized(self, start_date) -> None: # Retorna None, pois salva em disco
+       def hourly_price_scenario_optimized(self, start_date) -> None: # Retun None due to chunked processing
               """
               Converts PU scenarios to hourly price scenarios using chunked processing
               by price scenario (scenario_nw) and saves each to Parquet to avoid MemoryErrors.
